@@ -1,3 +1,10 @@
+//
+//  ContentView.swift
+//  testnavigation
+//
+//  Created by Volodymyr Seredovych on 09.02.2022.
+//
+
 import SwiftUI
 
 struct ContentView: View {
@@ -16,26 +23,28 @@ struct ContentView: View {
                 }
             }
         }
-        .fullScreenCoverBackport(isPresented: $isPresented) {
+        .fullScreenCoverBackport(isPresented: $isPresented, onDismiss: { isPresented.toggle() }) {
             DetailsView(model: $chosenModel)
         }
     }
 }
+
 extension View {
-    func fullScreenCoverBackport<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> Content) -> some View {
-            ModifiedContent(content: self, modifier: ModalContainerModifier(isPresented: isPresented, addition: content()))
+    func fullScreenCoverBackport<Content: View>(isPresented: Binding<Bool>, onDismiss: (() -> Void)? = nil, @ViewBuilder content: () -> Content) -> some View {
+        ModifiedContent(content: self, modifier: ModalContainerModifier(isPresented: isPresented, onDismiss: onDismiss, addition: content()))
     }
 }
 
 struct ModalContainerModifier<Addition: View>: ViewModifier {
     @Binding var isPresented: Bool
+    var onDismiss: (() -> Void)?
     var addition: Addition
     
     func body(content: Content) -> some View {
         content
         .background( ZStack {
             if isPresented {
-                ModalContainer(content: addition)
+                ModalContainer(content: addition, isPresented: isPresented, onDismiss: onDismiss)
             }
         })
     }
@@ -43,9 +52,11 @@ struct ModalContainerModifier<Addition: View>: ViewModifier {
 
 struct ModalContainer<Content: View>: UIViewControllerRepresentable {
     let content: Content
+    @State var isPresented: Bool = false
+    var onDismiss: (() -> Void)?
     func makeUIViewController(context: UIViewControllerRepresentableContext<ModalContainer>) -> UIViewController {
         let proxyController = ViewController()
-        
+        proxyController.onDismiss = onDismiss
         proxyController.child = UIHostingController(rootView: content)
         //proxyController.isModalInPresentation = true
         return proxyController
@@ -56,12 +67,14 @@ struct ModalContainer<Content: View>: UIViewControllerRepresentable {
     }
 
     static func dismantleUIViewController(_ uiViewController: UIViewController, coordinator: ()) {
-        print("DISMANTLE")
-        (uiViewController as! ViewController).child?.dismiss(animated: true, completion: nil)
+        print(">>> dismantleUIViewController")
+        (uiViewController as! ViewController).child?.dismiss(animated: false, completion: nil)
+        //isPresented.toggle()
     }
     
     private class ViewController: UIViewController {
         var child: UIHostingController<Content>?
+        var onDismiss: (() -> Void)?
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
 //            if let child = self.presentedViewController {
@@ -69,19 +82,18 @@ struct ModalContainer<Content: View>: UIViewControllerRepresentable {
 //                child.removeFromParent()
 //            }
             child?.modalPresentationStyle = .overCurrentContext
-            child?.view.backgroundColor = .blue
+            child?.view.backgroundColor = UIColor(.black).withAlphaComponent(0.5)
             
-            child?.definesPresentationContext = true
+            //child?.definesPresentationContext = true
             //child?.isModalInPresentation = true
             
             if let child = child {
-                self.present(child, animated: true, completion: nil)
+                self.present(child, animated: false, completion: nil)
             }
         }
         override func viewWillDisappear(_ animated: Bool) {
-            print("view will disappear")
-            dismantleUIViewController(self, coordinator: ())
-            //parent?.dismiss(animated: false, completion: {})
+            //print(">>> ViewController will disappear")
+            //dismantleUIViewController(self, coordinator: ())
         }
     }
 }
@@ -90,19 +102,17 @@ struct DetailsModel: Hashable {
     var title: String?
     var sections: [String]?
     static var models: [DetailsModel] = {
-        return [DetailsModel(title: "fff1", sections: ["11---","12---","13---",
-                                                       "14---","15---","16---","17---",
-                                                       "18---","19---","20---","21---",
-                                                       "22---","23---","24---","25---",
-                                                       "26---","27---","28---","29---"]),
-                DetailsModel(title: "fff2", sections: ["21---","22---","23---","24---",
-                                                       "25---","26---","27---","28---"]),
-                DetailsModel(sections: ["11---","12---","13---",
-                                        "14---","15---","16---","17---",
-                                        "18---","19---","20---","21---",
-                                        "22---","23---","24---","25---",
-                                        "26---","27---","28---","29---"]),
-                DetailsModel(title: "fff4")]
+        return [DetailsModel(title: "title1", sections: ["section11","section12","section13",
+                                                       "section14","section15","section16","section17",
+                                                       "section18","section19","section20","section21",
+                                                       "section22","section23","section24","section25",
+                                                       "section26","section27","section28","section29"]),
+                DetailsModel(title: "title2", sections: ["section21","section22","section23","section24",
+                                                       "section25","section26","section27","section28"]),
+                DetailsModel(title: "title3", sections: ["section11","section12","section13",
+                                        "section14","section15","section16","section17",
+                                        "section18","section19","section20","section21",
+                                        "section22","section23","section24","section25"])]
     }()
 }
 
@@ -124,7 +134,7 @@ struct DetailsView: View {
         .frame(width: geometry.size.width,
                height: min(viewContentSize.height, maxHeight),
                alignment: .top)
-        .background(Color(.red))//secondarySystemBackground
+        .background(Color(.secondarySystemBackground))//secondarySystemBackground
         .frame(height: geometry.size.height, alignment: .bottom)
         .offset(y: max(translation, 0))
         .gesture(DragGesture().updating(self.$translation) { value, state, _ in
@@ -134,11 +144,13 @@ struct DetailsView: View {
             guard abs(value.translation.height) > snapDistance else {
                 return
             }
-            dismiss()
+            if value.translation.height > 0 {
+                dismiss()
+            }
         })
         }
         .onDisappear {
-            print(">>> going to disappear")
+            print(">>> DetailsView going to disappear")
         }
     }
     
